@@ -66,7 +66,6 @@ export default function TeamManagerDialog({ open, onOpenChange, team, onTeamCrea
   }, [teamId]);
 
   const isAdmin = !!team && team.members.some((m) => m.user._id === user?.id && m.role === "admin");
-  const existingMemberIds = new Set(team?.members.map((m) => m.user._id));
 
   const handleCreate = () => {
     if (!newTeamName.trim()) return;

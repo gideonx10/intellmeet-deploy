@@ -1,4 +1,9 @@
 import dotenv from 'dotenv';
+dotenv.config();
+
+import * as Sentry from '@sentry/node';
+Sentry.init({ dsn: process.env.SENTRY_DSN });
+
 import redisClient from './config/redis.js';
 import express from 'express';
 import cors from 'cors';
@@ -20,17 +25,17 @@ import Meeting from './models/Meeting.js';
 import { deleteCache } from './utils/cache.js';
 import { setIO } from './socket/io.js';
 
-dotenv.config();
 connectDB();
 
 const app = express();
 const httpServer = createServer(app);
+const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 const io = new Server(httpServer, {
-  cors: { origin: 'http://localhost:5173', methods: ['GET', 'POST'] }
+  cors: { origin: CLIENT_URL, methods: ['GET', 'POST'] }
 });
 setIO(io);
 
-app.use(cors({ origin: 'http://localhost:5173' }));
+app.use(cors({ origin: CLIENT_URL }));
 app.use(helmet());
 app.use(morgan('dev'));
 app.use(express.json());
@@ -42,6 +47,8 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/teams', teamRoutes);
+
+Sentry.setupExpressErrorHandler(app);
 
 app.get('/', (req, res) => {
   res.json({ message: 'IntellMeet API running' });

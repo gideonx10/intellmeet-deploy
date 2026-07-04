@@ -1,4 +1,5 @@
 import "./polyfills";
+import * as Sentry from "@sentry/react";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
@@ -15,6 +16,8 @@ import PostMeetingSummaryPage from "@/pages/meeting/PostMeetingSummaryPage";
 import WorkspacePage from "@/pages/dashboard/WorkspacePage";
 import ProfilePage from "@/pages/profile/ProfilePage";
 import "./index.css";
+
+Sentry.init({ dsn: import.meta.env.VITE_SENTRY_DSN });
 
 const queryClient = new QueryClient({
   defaultOptions: {
