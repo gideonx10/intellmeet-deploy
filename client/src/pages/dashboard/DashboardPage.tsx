@@ -1,0 +1,198 @@
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { isAxiosError } from "axios";
+import { useAuthStore } from "@/store/authStore";
+import { useLogout } from "@/hooks/useAuth";
+import { useCreateMeeting, useJoinMeeting, useMyMeetings } from "@/hooks/useMeetings";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import NotificationBell from "@/components/layout/NotificationBell";
+import { LogOut, Video, Users, Plus, CalendarClock, Sparkles, LayoutGrid, UserRound } from "lucide-react";
+
+export default function DashboardPage() {
+  const navigate = useNavigate();
+  const { user } = useAuthStore();
+  const { mutate: logout } = useLogout();
+  const { mutate: createMeeting, isPending: creating, error: createError } = useCreateMeeting();
+  const { mutate: joinMeeting, isPending: joining, error: joinError } = useJoinMeeting();
+  const { data: meetings, isLoading: loadingMeetings, error: meetingsError } = useMyMeetings();
+  const [title, setTitle] = useState("");
+  const [code, setCode] = useState("");
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">🤝</span>
+          <span className="font-semibold text-slate-800">IntellMeet</span>
+        </div>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Button variant="ghost" size="sm" onClick={() => navigate("/workspace")}>
+            <LayoutGrid className="w-4 h-4 sm:mr-1" /> <span className="hidden sm:inline">Workspace</span>
+          </Button>
+          <NotificationBell />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-semibold overflow-hidden shrink-0">
+                {user?.avatar ? (
+                  <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
+                ) : (
+                  user?.name?.[0]?.toUpperCase()
+                )}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <div className="px-2.5 py-1.5 text-xs text-slate-400 truncate">{user?.name}</div>
+              <DropdownMenuItem onClick={() => navigate("/profile")}>
+                <UserRound className="w-4 h-4" /> Profile
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => logout()}>
+                <LogOut className="w-4 h-4" /> Logout
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </header>
+
+      <main className="max-w-2xl mx-auto px-6 py-12 space-y-6">
+        <div>
+          <h2 className="text-xl font-semibold text-slate-800">Good to see you, {user?.name?.split(" ")[0]} 👋</h2>
+          <p className="text-slate-500 text-sm mt-1">Start a new meeting or join an existing one</p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Create Meeting */}
+          <Card className="border border-slate-200 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <Plus className="w-4 h-4 text-blue-600" />
+                </div>
+                New Meeting
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Input
+                placeholder="Meeting title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="border-slate-200"
+              />
+              {createError && (
+                <p className="text-red-500 text-xs">
+                  {isAxiosError(createError) ? createError.response?.data?.message || "Failed to create meeting" : "Failed to create meeting"}
+                </p>
+              )}
+              <Button
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                disabled={!title.trim() || creating}
+                onClick={() => createMeeting({ title })}
+              >
+                <Video className="w-4 h-4 mr-2" />
+                {creating ? "Creating..." : "Start meeting"}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Join Meeting */}
+          <Card className="border border-slate-200 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                  <Users className="w-4 h-4 text-green-600" />
+                </div>
+                Join Meeting
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Input
+                placeholder="Enter meeting code"
+                value={code}
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                className="border-slate-200 font-mono tracking-widest"
+                maxLength={8}
+              />
+              {joinError && (
+                <p className="text-red-500 text-xs">
+                  {isAxiosError(joinError) ? joinError.response?.data?.message || "Invalid meeting code" : "Invalid meeting code"}
+                </p>
+              )}
+              <Button
+                variant="outline"
+                className="w-full border-green-200 text-green-700 hover:bg-green-50"
+                disabled={code.length !== 8 || joining}
+                onClick={() => joinMeeting(code)}
+              >
+                {joining ? "Joining..." : "Join meeting"}
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div>
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">Recent Meetings</h3>
+
+          {loadingMeetings ? (
+            <div className="space-y-2">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+          ) : meetingsError ? (
+            <p className="text-sm text-red-500">
+              {isAxiosError(meetingsError) ? meetingsError.response?.data?.message || "Failed to load meetings" : "Failed to load meetings"}
+            </p>
+          ) : meetings && meetings.length > 0 ? (
+            <div className="space-y-2">
+              {meetings.map((m) => (
+                <Card key={m._id} className="border border-slate-200 shadow-sm">
+                  <CardContent className="py-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">{m.title}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {new Date(m.createdAt).toLocaleDateString()} · {m.status}
+                      </p>
+                    </div>
+                    {m.status === "ended" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => navigate(`/meeting/${m._id}/summary`)}
+                      >
+                        <Sparkles className="w-4 h-4 mr-1" />
+                        View summary
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Card className="border border-dashed border-slate-300 shadow-none">
+              <CardContent className="py-10 flex flex-col items-center text-center gap-3">
+                <div className="w-14 h-14 bg-blue-50 rounded-full flex items-center justify-center">
+                  <CalendarClock className="w-7 h-7 text-blue-500" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-700">No meetings yet</p>
+                  <p className="text-xs text-slate-400 mt-1">Your meeting history will show up here</p>
+                </div>
+                <Button
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  disabled={creating}
+                  onClick={() => createMeeting({ title: "Quick Meeting" })}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  {creating ? "Starting..." : "Start your first meeting"}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}
