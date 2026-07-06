@@ -3,7 +3,7 @@ import multer from 'multer';
 import {
   createMeeting, getMyMeetings, getMeeting,
   getMeetingByCode, startMeeting, endMeeting, deleteMeeting, toggleActionItem,
-  uploadRecording, MAX_RECORDING_SIZE_MB,
+  uploadRecording, MAX_RECORDING_SIZE_MB, updateAiSettings,
 } from '../controllers/meetingController.js';
 import { protect } from '../middleware/authMiddleware.js';
 
@@ -34,6 +34,7 @@ router.get('/', getMyMeetings);
 router.get('/join/:code', getMeetingByCode);
 router.get('/:id', getMeeting);
 router.patch('/:id/start', startMeeting);
+router.patch('/:id/ai-settings', updateAiSettings);
 router.patch('/:id/end', endMeeting);
 router.post('/:id/recording', handleUpload, uploadRecording);
 router.patch('/:id/actionItems/:itemId', toggleActionItem);

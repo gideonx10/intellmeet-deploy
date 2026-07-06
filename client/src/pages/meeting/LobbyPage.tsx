@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { Mic, MicOff, Video, VideoOff, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { useAuthStore } from "@/store/authStore";
-import { useGetMeeting } from "@/hooks/useMeetings";
+import { useGetMeeting, useUpdateAiSettings } from "@/hooks/useMeetings";
 
 export default function LobbyPage() {
   const { id } = useParams<{ id: string }>();
@@ -11,12 +12,15 @@ export default function LobbyPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { data: meeting } = useGetMeeting(id!);
+  const { mutate: updateAiSettings } = useUpdateAiSettings(id!);
+  const isHost = meeting?.host?._id === user?.id;
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
   const [ready, setReady] = useState(false);
+  const aiEnabled = meeting?.aiEnabled !== false;
 
   useEffect(() => {
     const getMedia = async () => {
@@ -78,6 +82,13 @@ export default function LobbyPage() {
             {camOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
           </button>
         </div>
+
+        {isHost && (
+          <div className="flex items-center justify-between bg-slate-800 rounded-xl px-4 py-3">
+            <span className="text-sm text-slate-300">Turn on AI Features</span>
+            <Switch checked={aiEnabled} onCheckedChange={(checked) => updateAiSettings(checked)} />
+          </div>
+        )}
 
         <Button
           className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 text-base"

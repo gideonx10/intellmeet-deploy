@@ -3,7 +3,7 @@ import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import Peer from "simple-peer";
 import { useSocket } from "@/socket/useSocket";
 import { useAuthStore } from "@/store/authStore";
-import { Mic, MicOff, Video, VideoOff, PhoneOff, MessageSquare, Monitor, Circle, Users, Captions, Copy, ListTodo, Sparkles } from "lucide-react";
+import { Mic, MicOff, Video, VideoOff, PhoneOff, MessageSquare, Monitor, Circle, Users, Captions, Copy, ListTodo, Sparkles, Maximize2, Minimize2, PanelRightClose, PanelRightOpen } from "lucide-react";
 import ChatPanel from "@/components/meeting/ChatPanel";
 import ParticipantsList from "@/components/meeting/ParticipantsList";
 import InMeetingTaskPanel from "@/components/meeting/InMeetingTaskPanel";
@@ -23,6 +23,16 @@ interface PeerData {
   micOn: boolean;
   camOn: boolean;
 }
+
+type Tile = {
+  key: string;
+  kind: "camera" | "screen";
+  userName: string;
+  isMe: boolean;
+  stream?: MediaStream | null;
+  micOn?: boolean;
+  camOn?: boolean;
+};
 
 export default function VideoRoomPage() {
   const { id } = useParams<{ id: string }>();
@@ -61,12 +71,19 @@ export default function VideoRoomPage() {
   const [peers, setPeers] = useState<PeerData[]>([]);
   const [micOn, setMicOn] = useState(searchParams.get("mic") !== "false");
   const [camOn, setCamOn] = useState(searchParams.get("cam") !== "false");
-  const [chatOpen, setChatOpen] = useState(false);
-  const [participantsOpen, setParticipantsOpen] = useState(false);
-  const [taskPanelOpen, setTaskPanelOpen] = useState(false);
+  const [openPanel, setOpenPanel] = useState<"participants" | "chat" | "tasks" | null>(null);
   // just shows/hides the caption bar — doesn't touch capture
   const [showCaptions, setShowCaptions] = useState(false);
   const [transcriptionActiveAnywhere, setTranscriptionActiveAnywhere] = useState(false);
+  const [recordingActiveAnywhere, setRecordingActiveAnywhere] = useState(false);
+  const [stripHidden, setStripHidden] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const bigTileRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  const toggleParticipants = () => setOpenPanel((p) => (p === "participants" ? null : "participants"));
+  const toggleChat = () => setOpenPanel((p) => (p === "chat" ? null : "chat"));
+  const toggleTasks = () => setOpenPanel((p) => (p === "tasks" ? null : "tasks"));
 
   const roomId = id!;
 
@@ -75,6 +92,21 @@ export default function VideoRoomPage() {
   useEffect(() => {
     isTranscribingRef.current = isTranscribing;
   }, [isTranscribing]);
+
+  const isRecordingRef = useRef(false);
+  useEffect(() => {
+    isRecordingRef.current = isRecording;
+  }, [isRecording]);
+
+  const [streamReady, setStreamReady] = useState(false);
+
+  // waits for the meeting to load before deciding, so a fast getUserMedia can't win a race
+  // against the meeting fetch and start transcription before aiEnabled is known
+  useEffect(() => {
+    if (!streamReady || !meeting) return;
+    if (meeting.aiEnabled === false) return;
+    startTranscription();
+  }, [streamReady, meeting, startTranscription]);
 
   // announces once capture starts so remote indicators pick it up — the server's broadcast
   // excludes the sender, so a solo participant needs the local isTranscribing check too (below)
@@ -126,9 +158,7 @@ export default function VideoRoomPage() {
         stream.getAudioTracks().forEach((t) => (t.enabled = micOn));
         myStreamRef.current = stream;
         if (myVideoRef.current) myVideoRef.current.srcObject = stream;
-        // starts as soon as a mic track exists — muting later just disables the track,
-        // no restart needed, and it's independent of the CC button entirely
-        startTranscription();
+        setStreamReady(true);
       }
 
       if (cancelled) return;
@@ -181,6 +211,7 @@ export default function VideoRoomPage() {
         // a late joiner wouldn't otherwise know transcription is active until their own mic
         // capture kicks in — re-announce so their indicator shows up immediately
         if (isTranscribingRef.current) socket.emit("transcription-active", { roomId });
+        if (isRecordingRef.current) socket.emit("recording-started", { roomId });
 
         const peerData = { peer, socketId, userName, micOn: peerMicOn ?? true, camOn: peerCamOn ?? true };
         peersRef.current.set(socketId, peerData);
@@ -217,6 +248,16 @@ export default function VideoRoomPage() {
     // Any participant's background capture becoming active — union across the whole meeting,
     // never reset false, since capture runs for the rest of the meeting once started.
     socket.on("transcription-active", () => setTranscriptionActiveAnywhere(true));
+
+    socket.on("recording-started", () => {
+      setRecordingActiveAnywhere(true);
+      showToast("Recording has started");
+    });
+
+    socket.on("recording-stopped", () => {
+      setRecordingActiveAnywhere(false);
+      showToast("Recording has stopped");
+    });
 
     // Receive offer — signal to existing peer
     socket.on("offer", ({ from, offer }: { from: string; offer: Peer.SignalData }) => {
@@ -256,6 +297,8 @@ export default function VideoRoomPage() {
       socket.off("media-state-changed");
       socket.off("screen-share-changed");
       socket.off("transcription-active");
+      socket.off("recording-started");
+      socket.off("recording-stopped");
       socket.off("offer");
       socket.off("answer");
       socket.off("ice-candidate");
@@ -334,7 +377,9 @@ export default function VideoRoomPage() {
       mountedTogglesRef.current.rec = true;
       return;
     }
+    socket?.emit(isRecording ? "recording-started" : "recording-stopped", { roomId });
     showToast(isRecording ? "Recording started" : "Recording stopped — uploading in the background");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRecording, showToast]);
 
   useEffect(() => {
@@ -353,6 +398,7 @@ export default function VideoRoomPage() {
   };
 
   const handleLeave = () => {
+    if (isHost && isRecording) toggleRecording();
     socket?.emit("leave-room", { roomId });
     myStreamRef.current?.getTracks().forEach((t) => t.stop());
 
@@ -370,16 +416,6 @@ export default function VideoRoomPage() {
     ...peers.map((p) => ({ socketId: p.socketId, userName: p.userName, isMe: false, micOn: p.micOn, camOn: p.camOn })),
   ];
 
-  type Tile = {
-    key: string;
-    kind: "camera" | "screen";
-    userName: string;
-    isMe: boolean;
-    stream?: MediaStream | null;
-    micOn?: boolean;
-    camOn?: boolean;
-  };
-
   // screen share is always its own tile, never swapped in for someone's camera tile
   const tiles: Tile[] = [
     { key: "me", kind: "camera", userName: user?.name || "You", isMe: true, stream: null, micOn, camOn },
@@ -390,9 +426,44 @@ export default function VideoRoomPage() {
     ]),
   ];
 
+  const screenTile = tiles.find((t) => t.kind === "screen");
+  const stripTiles = tiles.filter((t) => t.key !== screenTile?.key);
+
+  useEffect(() => {
+    const handler = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", handler);
+    return () => document.removeEventListener("fullscreenchange", handler);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      bigTileRef.current?.requestFullscreen();
+    }
+  };
+
+  const toggleMeetingFullscreen = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      rootRef.current?.requestFullscreen();
+    }
+  };
+
+  const tileIsFullscreen = isFullscreen && document.fullscreenElement === bigTileRef.current;
+  const meetingIsFullscreen = isFullscreen && document.fullscreenElement === rootRef.current;
+
   return (
-    <div className="h-screen bg-slate-900 flex flex-col relative">
+    <div ref={rootRef} className="h-screen bg-slate-900 flex flex-col relative">
       <ToastStack toasts={toasts} />
+
+      {(isRecording || recordingActiveAnywhere) && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5 bg-red-600/90 text-white text-xs px-3 py-1.5 rounded-full">
+          <Circle className="w-3 h-3 fill-white animate-pulse" />
+          <span>This meeting is being recorded</span>
+        </div>
+      )}
 
       {isHost && meeting?.meetingCode && (
         <button
@@ -416,50 +487,53 @@ export default function VideoRoomPage() {
       )}
 
       <div className="flex-1 flex overflow-hidden min-h-0">
-        <div
-          className="flex-1 min-h-0 p-4 grid gap-3 content-start overflow-y-auto"
-          style={{ gridTemplateColumns: `repeat(${Math.min(tiles.length, 3)}, 1fr)` }}
-        >
-          {tiles.map((tile) => (
-            <div key={tile.key} className="relative bg-slate-800 rounded-xl overflow-hidden aspect-video">
-              {tile.kind === "screen" ? (
-                tile.isMe ? <ScreenPreview stream={tile.stream!} /> : <RemoteVideo stream={tile.stream} />
-              ) : tile.isMe ? (
-                <video ref={myVideoRef} autoPlay muted playsInline className="w-full h-full object-cover scale-x-[-1]" />
-              ) : (
-                <RemoteVideo stream={tile.stream} />
-              )}
-
-              {tile.kind === "camera" && !tile.camOn && (
-                <div className="absolute inset-0 flex items-center justify-center bg-slate-800">
-                  <div className="w-14 h-14 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xl font-semibold">
-                    {tile.userName?.charAt(0).toUpperCase() || "?"}
-                  </div>
-                </div>
-              )}
-
-              {tile.kind === "screen" && (
-                <div className="absolute top-2 left-2 bg-blue-600 text-white text-[11px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <Monitor className="w-3 h-3" /> Presenting
-                </div>
-              )}
-
-              <div className="absolute bottom-2 left-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded-full">
-                {tile.userName} {tile.isMe ? "(You)" : ""} {tile.kind === "screen" ? "— screen" : ""}
+        {screenTile ? (
+          <div className="flex-1 flex min-h-0">
+            <div
+              ref={bigTileRef}
+              className={`relative min-h-0 p-4 ${stripHidden ? "w-full" : "w-4/5"}`}
+            >
+              <TileCard tile={screenTile} myVideoRef={myVideoRef} className="w-full h-full" />
+              <div className="absolute bottom-6 right-6 z-10 flex gap-2">
+                <button
+                  onClick={() => setStripHidden((h) => !h)}
+                  title={stripHidden ? "Show participants" : "Hide participants"}
+                  className="w-10 h-10 rounded-full bg-slate-900/70 hover:bg-slate-900 text-white flex items-center justify-center"
+                >
+                  {stripHidden ? <PanelRightOpen className="w-4 h-4" /> : <PanelRightClose className="w-4 h-4" />}
+                </button>
+                <button
+                  onClick={toggleFullscreen}
+                  title={tileIsFullscreen ? "Exit full screen" : "Full screen"}
+                  className="w-10 h-10 rounded-full bg-slate-900/70 hover:bg-slate-900 text-white flex items-center justify-center"
+                >
+                  {tileIsFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                </button>
               </div>
-
-              {tile.kind === "camera" && !tile.micOn && (
-                <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-red-500 flex items-center justify-center">
-                  <MicOff className="w-3.5 h-3.5 text-white" />
-                </div>
-              )}
             </div>
-          ))}
-        </div>
+
+            {!stripHidden && (
+              <div className="w-1/5 min-h-0 p-4 pl-0 flex flex-col gap-3 overflow-y-auto">
+                {stripTiles.map((tile) => (
+                  <TileCard key={tile.key} tile={tile} myVideoRef={myVideoRef} className="aspect-video shrink-0" />
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div
+            className="flex-1 min-h-0 p-4 grid gap-3 content-start overflow-y-auto"
+            style={{ gridTemplateColumns: `repeat(${Math.min(tiles.length, 3)}, 1fr)` }}
+          >
+            {tiles.map((tile) => (
+              <TileCard key={tile.key} tile={tile} myVideoRef={myVideoRef} className="aspect-video" />
+            ))}
+          </div>
+        )}
 
         <div
           className={`shrink-0 h-full overflow-hidden transition-all duration-300 ease-in-out ${
-            participantsOpen ? "w-80 opacity-100" : "w-0 opacity-0"
+            openPanel === "participants" ? "w-80 opacity-100" : "w-0 opacity-0"
           }`}
         >
           <div className="w-80 h-full">
@@ -477,7 +551,7 @@ export default function VideoRoomPage() {
 
         <div
           className={`shrink-0 h-full overflow-hidden transition-all duration-300 ease-in-out ${
-            chatOpen ? "w-80 opacity-100" : "w-0 opacity-0"
+            openPanel === "chat" ? "w-80 opacity-100" : "w-0 opacity-0"
           }`}
         >
           <div className="w-80 h-full">
@@ -487,7 +561,7 @@ export default function VideoRoomPage() {
 
         <div
           className={`shrink-0 h-full overflow-hidden transition-all duration-300 ease-in-out ${
-            taskPanelOpen ? "w-80 opacity-100" : "w-0 opacity-0"
+            openPanel === "tasks" ? "w-80 opacity-100" : "w-0 opacity-0"
           }`}
         >
           <div className="w-80 h-full">
@@ -530,17 +604,24 @@ export default function VideoRoomPage() {
           </button>
         )}
         <ControlBtn
-          onClick={() => setParticipantsOpen((p) => !p)}
-          active={!participantsOpen}
+          onClick={toggleParticipants}
+          active={openPanel !== "participants"}
           icon={<Users className="w-5 h-5" />}
           badge={allPeople.length}
         />
-        <ControlBtn onClick={() => setChatOpen((p) => !p)} active={!chatOpen} icon={<MessageSquare className="w-5 h-5" />} />
+        <ControlBtn onClick={toggleChat} active={openPanel !== "chat"} icon={<MessageSquare className="w-5 h-5" />} />
         <ControlBtn
-          onClick={() => setTaskPanelOpen((p) => !p)}
-          active={!taskPanelOpen}
+          onClick={toggleTasks}
+          active={openPanel !== "tasks"}
           icon={<ListTodo className="w-5 h-5" />}
         />
+        <button
+          onClick={toggleMeetingFullscreen}
+          className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${meetingIsFullscreen ? "bg-blue-500 hover:bg-blue-600 text-white" : "bg-slate-700 hover:bg-slate-600 text-white"}`}
+          title={meetingIsFullscreen ? "Exit full screen" : "Full screen"}
+        >
+          {meetingIsFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+        </button>
         <button
           onClick={handleLeave}
           title={isHost ? "End meeting for all" : "Leave meeting"}
@@ -549,6 +630,52 @@ export default function VideoRoomPage() {
           <PhoneOff className="w-5 h-5" />
         </button>
       </div>
+    </div>
+  );
+}
+
+function TileCard({
+  tile,
+  myVideoRef,
+  className,
+}: {
+  tile: Tile;
+  myVideoRef: React.RefObject<HTMLVideoElement | null>;
+  className?: string;
+}) {
+  return (
+    <div className={`relative bg-slate-800 rounded-xl overflow-hidden ${className || ""}`}>
+      {tile.kind === "screen" ? (
+        tile.isMe ? <ScreenPreview stream={tile.stream!} /> : <RemoteVideo stream={tile.stream} />
+      ) : tile.isMe ? (
+        <video ref={myVideoRef} autoPlay muted playsInline className="w-full h-full object-cover scale-x-[-1]" />
+      ) : (
+        <RemoteVideo stream={tile.stream} />
+      )}
+
+      {tile.kind === "camera" && !tile.camOn && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-800">
+          <div className="w-14 h-14 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xl font-semibold">
+            {tile.userName?.charAt(0).toUpperCase() || "?"}
+          </div>
+        </div>
+      )}
+
+      {tile.kind === "screen" && (
+        <div className="absolute top-2 left-2 bg-blue-600 text-white text-[11px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
+          <Monitor className="w-3 h-3" /> Presenting
+        </div>
+      )}
+
+      <div className="absolute bottom-2 left-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded-full">
+        {tile.userName} {tile.isMe ? "(You)" : ""} {tile.kind === "screen" ? "— screen" : ""}
+      </div>
+
+      {tile.kind === "camera" && !tile.micOn && (
+        <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-red-500 flex items-center justify-center">
+          <MicOff className="w-3.5 h-3.5 text-white" />
+        </div>
+      )}
     </div>
   );
 }

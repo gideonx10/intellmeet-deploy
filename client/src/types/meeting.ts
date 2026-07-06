@@ -32,6 +32,7 @@ export interface Meeting {
   endedAt?: string;
   recordingUrl?: string | null;
   recordingStatus?: "none" | "processing" | "ready" | "failed";
+  aiEnabled?: boolean;
   summary?: string;
   transcript?: string;
   actionItems: ActionItem[];

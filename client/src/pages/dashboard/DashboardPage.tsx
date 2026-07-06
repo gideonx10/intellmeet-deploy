@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import NotificationBell from "@/components/layout/NotificationBell";
-import { LogOut, Video, Users, Plus, CalendarClock, Sparkles, LayoutGrid, UserRound } from "lucide-react";
+import { LogOut, Video, Users, Plus, CalendarClock, Sparkles, LayoutGrid, UserRound, Handshake } from "lucide-react";
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -25,10 +25,13 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-xl">🤝</span>
+        <button
+          onClick={() => navigate("/dashboard")}
+          className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+        >
+          <Handshake className="w-5 h-5 text-blue-600" />
           <span className="font-semibold text-slate-800">IntellMeet</span>
-        </div>
+        </button>
         <div className="flex items-center gap-2 sm:gap-3">
           <Button variant="ghost" size="sm" onClick={() => navigate("/workspace")}>
             <LayoutGrid className="w-4 h-4 sm:mr-1" /> <span className="hidden sm:inline">Workspace</span>

@@ -11,9 +11,12 @@ export const transcribeAudio = async (req, res) => {
       return res.status(400).json({ message: 'No audio file provided' });
     }
 
-    const meetingExists = await Meeting.exists({ _id: req.params.meetingId });
-    if (!meetingExists) {
+    const meetingDoc = await Meeting.findById(req.params.meetingId).select('aiEnabled');
+    if (!meetingDoc) {
       return res.status(404).json({ message: 'Meeting not found' });
+    }
+    if (meetingDoc.aiEnabled === false) {
+      return res.status(403).json({ message: 'AI features are disabled for this meeting' });
     }
 
     const audioFile = await toFile(req.file.buffer, 'chunk.webm', { type: req.file.mimetype });
@@ -64,6 +67,10 @@ export const summarizeMeeting = async (req, res) => {
     const meeting = await Meeting.findById(req.params.meetingId);
     if (!meeting) {
       return res.status(404).json({ message: 'Meeting not found' });
+    }
+
+    if (meeting.aiEnabled === false) {
+      return res.status(403).json({ message: 'AI features are disabled for this meeting' });
     }
 
     // already summarized (page revisited) — re-running would wipe actionItems and any

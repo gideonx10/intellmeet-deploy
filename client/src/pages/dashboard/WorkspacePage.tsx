@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { isAxiosError } from "axios";
-import { ArrowLeft, Plus, Users2, UsersRound, KeyRound, Mail } from "lucide-react";
+import { ArrowLeft, Plus, Users2, UsersRound, KeyRound, Mail, ChevronDown, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import TeamManagerDialog from "@/components/workspace/TeamManagerDialog";
 import { useCreateTask, useTeamTasks, useUpdateTaskStatus } from "@/hooks/useTasks";
 import { useAcceptInvite, useMyPendingInvites, useMyTeams, useRejectInvite } from "@/hooks/useTeams";
@@ -99,17 +100,26 @@ export default function WorkspacePage() {
           {teams && teams.length > 0 && (
             <>
               {teams.length > 1 ? (
-                <select
-                  value={selectedTeamId ?? ""}
-                  onChange={(e) => setSelectedTeamId(e.target.value)}
-                  className="text-sm border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {teams.map((t) => (
-                    <option key={t._id} value={t._id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="group flex items-center gap-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg pl-3 pr-2.5 py-2 hover:border-slate-300 hover:bg-slate-50 transition-colors data-[state=open]:border-blue-300 data-[state=open]:ring-2 data-[state=open]:ring-blue-100">
+                      <span>{selectedTeam?.name}</span>
+                      <ChevronDown className="w-4 h-4 text-slate-400 transition-transform group-data-[state=open]:rotate-180" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-50">
+                    {teams.map((t) => (
+                      <DropdownMenuItem
+                        key={t._id}
+                        onClick={() => setSelectedTeamId(t._id)}
+                        className={t._id === selectedTeamId ? "bg-blue-50 text-blue-700 font-medium" : ""}
+                      >
+                        <span className="flex-1 truncate">{t.name}</span>
+                        {t._id === selectedTeamId && <Check className="w-4 h-4 text-blue-600 shrink-0" />}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               ) : (
                 <span className="text-sm text-slate-600 font-medium">{selectedTeam?.name}</span>
               )}

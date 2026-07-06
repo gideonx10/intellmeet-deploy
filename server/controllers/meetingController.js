@@ -8,13 +8,14 @@ import { getIO } from '../socket/io.js';
 // POST /api/meetings — create meeting
 export const createMeeting = async (req, res) => {
   try {
-    const { title, scheduledAt } = req.body;
+    const { title, scheduledAt, aiEnabled } = req.body;
 
     const meeting = await Meeting.create({
       title,
       host: req.user._id,
       scheduledAt: scheduledAt || Date.now(),
       participants: [{ user: req.user._id, role: 'host' }],
+      aiEnabled: aiEnabled !== undefined ? aiEnabled : true,
     });
 
     await meeting.populate('host', 'name email avatar');
@@ -133,6 +134,37 @@ export const startMeeting = async (req, res) => {
 
     res.status(200).json({
       message: 'Meeting started',
+      meeting,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// PATCH /api/meetings/:id/ai-settings
+export const updateAiSettings = async (req, res) => {
+  try {
+    const meeting = await Meeting.findById(req.params.id);
+
+    if (!meeting) {
+      return res.status(404).json({
+        message: 'Meeting not found',
+      });
+    }
+
+    if (meeting.host.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        message: 'Only the host can change AI settings',
+      });
+    }
+
+    meeting.aiEnabled = !!req.body.aiEnabled;
+    await meeting.save();
+
+    await deleteCache(`meeting:${meeting._id}`);
+
+    res.status(200).json({
+      message: 'AI settings updated',
       meeting,
     });
   } catch (err) {

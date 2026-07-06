@@ -127,6 +127,14 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('transcription-active');
   });
 
+  socket.on('recording-started', ({ roomId }) => {
+    socket.to(roomId).emit('recording-started');
+  });
+
+  socket.on('recording-stopped', ({ roomId }) => {
+    socket.to(roomId).emit('recording-stopped');
+  });
+
   // Broadcast mic/camera toggle to the room
   socket.on('media-state-changed', ({ roomId, micOn, camOn }) => {
     const room = rooms.get(roomId);

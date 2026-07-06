@@ -39,6 +39,7 @@ const meetingSchema = new mongoose.Schema({
     enum: ['none', 'processing', 'ready', 'failed'],
     default: 'none',
   },
+  aiEnabled: { type: Boolean, default: true },
   transcript: { type: String, default: '' },
   summary: { type: String, default: '' },
   actionItems: [{

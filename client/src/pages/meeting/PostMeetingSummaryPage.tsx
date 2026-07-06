@@ -109,7 +109,7 @@ export default function PostMeetingSummaryPage() {
     if (!meeting) return;
     hasSummarized.current = true;
 
-    if (meeting.summary) {
+    if (meeting.summary || meeting.aiEnabled === false) {
       setStatus("success");
       return;
     }
@@ -132,6 +132,7 @@ export default function PostMeetingSummaryPage() {
   const isError = status === "error";
 
   const noTranscript = isError && isAxiosError(error) && error.response?.status === 400;
+  const noAI = meeting?.aiEnabled === false;
   const duration = formatDuration(meeting?.startedAt, meeting?.endedAt);
 
   const openConvertForm = (item: ActionItem) => {
@@ -229,7 +230,18 @@ export default function PostMeetingSummaryPage() {
           </Card>
         )}
 
-        {isSuccess && meeting && (
+        {isSuccess && noAI && (
+          <Card className="border border-slate-200 shadow-sm">
+            <CardContent className="py-10 flex flex-col items-center text-center gap-3">
+              <Sparkles className="w-8 h-8 text-slate-300" />
+              <p className="text-sm text-slate-600 max-w-sm">
+                AI features were turned off for this meeting, so no transcript or summary was generated.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {isSuccess && !noAI && meeting && (
           <>
             <Card className="border border-slate-200 shadow-sm">
               <CardHeader className="pb-3">

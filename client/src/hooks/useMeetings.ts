@@ -44,6 +44,17 @@ export const useStartMeeting = (id: string) => {
   });
 };
 
+export const useUpdateAiSettings = (id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (aiEnabled: boolean) => api.patch(`/meetings/${id}/ai-settings`, { aiEnabled }),
+    onMutate: (aiEnabled: boolean) => {
+      qc.setQueryData<Meeting>(["meeting", id], (prev) => (prev ? { ...prev, aiEnabled } : prev));
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["meeting", id] }),
+  });
+};
+
 export const useToggleActionItem = (meetingId: string) => {
   const qc = useQueryClient();
   return useMutation({
