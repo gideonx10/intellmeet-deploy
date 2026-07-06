@@ -13,6 +13,8 @@ import { useTranscription } from "@/hooks/useTranscription";
 import { useEndMeeting, useGetMeeting, useStartMeeting, useUploadRecording } from "@/hooks/useMeetings";
 import { useToast } from "@/hooks/useToast";
 import { ToastStack } from "@/components/ui/toast";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 interface PeerData {
   peer: Peer.Instance;
@@ -53,7 +55,6 @@ export default function VideoRoomPage() {
   const { mutate: uploadRecording } = useUploadRecording(id!);
   const isHost = meeting?.host?._id === user?.id;
   const { toasts, showToast } = useToast();
-  const { isRecording, recordingTime, toggleRecording } = useRecording(myStreamRef, uploadRecording);
 
   // guards against StrictMode's double-invoke — both would otherwise see status "scheduled"
   // and both fire startMeeting, racing two saves on the same document
@@ -78,6 +79,8 @@ export default function VideoRoomPage() {
   const [recordingActiveAnywhere, setRecordingActiveAnywhere] = useState(false);
   const [stripHidden, setStripHidden] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showStartRecordingConfirm, setShowStartRecordingConfirm] = useState(false);
+  const [showStopRecordingConfirm, setShowStopRecordingConfirm] = useState(false);
   const bigTileRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -92,6 +95,8 @@ export default function VideoRoomPage() {
   useEffect(() => {
     isTranscribingRef.current = isTranscribing;
   }, [isTranscribing]);
+
+  const { isRecording, recordingTime, toggleRecording } = useRecording(myStreamRef, uploadRecording, showToast);
 
   const isRecordingRef = useRef(false);
   useEffect(() => {
@@ -458,13 +463,6 @@ export default function VideoRoomPage() {
     <div ref={rootRef} className="h-screen bg-slate-900 flex flex-col relative">
       <ToastStack toasts={toasts} />
 
-      {(isRecording || recordingActiveAnywhere) && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5 bg-red-600/90 text-white text-xs px-3 py-1.5 rounded-full">
-          <Circle className="w-3 h-3 fill-white animate-pulse" />
-          <span>This meeting is being recorded</span>
-        </div>
-      )}
-
       {isHost && meeting?.meetingCode && (
         <button
           onClick={copyMeetingCode}
@@ -486,6 +484,53 @@ export default function VideoRoomPage() {
         </div>
       )}
 
+      <Dialog open={showStartRecordingConfirm} onOpenChange={setShowStartRecordingConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Start recording this meeting?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-slate-600 mb-6">
+            You'll be asked to select this browser tab to share. Recording captures exactly what's on this tab.
+          </p>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setShowStartRecordingConfirm(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => {
+                setShowStartRecordingConfirm(false);
+                toggleRecording();
+              }}
+            >
+              Start Recording
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showStopRecordingConfirm} onOpenChange={setShowStopRecordingConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Stop and save this recording?</DialogTitle>
+          </DialogHeader>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setShowStopRecordingConfirm(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => {
+                setShowStopRecordingConfirm(false);
+                toggleRecording();
+              }}
+            >
+              Stop Recording
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div className="flex-1 flex overflow-hidden min-h-0">
         {screenTile ? (
           <div className="flex-1 flex min-h-0">
@@ -504,7 +549,7 @@ export default function VideoRoomPage() {
                 </button>
                 <button
                   onClick={toggleFullscreen}
-                  title={tileIsFullscreen ? "Exit full screen" : "Full screen"}
+                  title={tileIsFullscreen ? "Exit full screen" : "Full screen shared content"}
                   className="w-10 h-10 rounded-full bg-slate-900/70 hover:bg-slate-900 text-white flex items-center justify-center"
                 >
                   {tileIsFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
@@ -595,13 +640,19 @@ export default function VideoRoomPage() {
         </button>
         {isHost && (
           <button
-            onClick={toggleRecording}
+            onClick={() => (isRecording ? setShowStopRecordingConfirm(true) : setShowStartRecordingConfirm(true))}
             className={`flex items-center gap-2 px-4 h-12 rounded-full transition-colors ${isRecording ? "bg-red-500 hover:bg-red-600 text-white" : "bg-slate-700 hover:bg-slate-600 text-white"}`}
             title={isRecording ? "Stop recording" : "Start recording"}
           >
             <Circle className={`w-3 h-3 ${isRecording ? "fill-white animate-pulse" : "fill-slate-400"}`} />
             <span className="text-sm font-mono">{isRecording ? recordingTime : "REC"}</span>
           </button>
+        )}
+        {(isRecording || recordingActiveAnywhere) && (
+          <div className="flex items-center gap-1.5 bg-red-600/90 text-white text-xs px-3 h-8 rounded-full">
+            <Circle className="w-2.5 h-2.5 fill-white animate-pulse" />
+            <span>Recording</span>
+          </div>
         )}
         <ControlBtn
           onClick={toggleParticipants}
@@ -618,7 +669,7 @@ export default function VideoRoomPage() {
         <button
           onClick={toggleMeetingFullscreen}
           className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${meetingIsFullscreen ? "bg-blue-500 hover:bg-blue-600 text-white" : "bg-slate-700 hover:bg-slate-600 text-white"}`}
-          title={meetingIsFullscreen ? "Exit full screen" : "Full screen"}
+          title={meetingIsFullscreen ? "Exit full screen" : "Full screen meeting"}
         >
           {meetingIsFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
         </button>

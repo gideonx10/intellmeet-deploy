@@ -156,7 +156,7 @@ export default function DashboardPage() {
                     <div>
                       <p className="text-sm font-medium text-slate-800">{m.title}</p>
                       <p className="text-xs text-slate-400 mt-0.5">
-                        {new Date(m.createdAt).toLocaleDateString()} · {m.status}
+                        {new Date(m.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })} · {m.status}
                       </p>
                     </div>
                     {m.status === "ended" && (

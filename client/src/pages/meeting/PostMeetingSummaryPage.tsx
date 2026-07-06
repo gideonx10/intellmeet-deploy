@@ -14,6 +14,7 @@ import {
   Clock,
   Video,
   VideoOff,
+  Handshake,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -177,7 +178,13 @@ export default function PostMeetingSummaryPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="no-print bg-white border-b border-slate-200 px-6 py-4">
-        <span className="font-semibold text-slate-800">🤝 IntellMeet</span>
+        <button
+          onClick={() => navigate("/dashboard")}
+          className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+        >
+          <Handshake className="w-5 h-5 text-blue-600" />
+          <span className="font-semibold text-slate-800">IntellMeet</span>
+        </button>
       </header>
 
       <main className="print-summary max-w-2xl mx-auto px-6 py-12 space-y-6">
