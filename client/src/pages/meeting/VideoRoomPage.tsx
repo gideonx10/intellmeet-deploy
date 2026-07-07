@@ -3,18 +3,21 @@ import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import Peer from "simple-peer";
 import { useSocket } from "@/socket/useSocket";
 import { useAuthStore } from "@/store/authStore";
-import { Mic, MicOff, Video, VideoOff, PhoneOff, MessageSquare, Monitor, Circle, Users, Captions, Copy, ListTodo, Sparkles, Maximize2, Minimize2, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { Sparkles, Maximize2, Minimize2, PanelRightClose, PanelRightOpen } from "lucide-react";
 import ChatPanel from "@/components/meeting/ChatPanel";
 import ParticipantsList from "@/components/meeting/ParticipantsList";
 import InMeetingTaskPanel from "@/components/meeting/InMeetingTaskPanel";
+import TileCard, { type Tile } from "@/components/meeting/TileCard";
+import MeetingCodeChip from "@/components/meeting/MeetingCodeChip";
+import LiveCaptionsBar from "@/components/meeting/LiveCaptionsBar";
+import RecordingConfirmDialogs from "@/components/meeting/RecordingConfirmDialogs";
+import MeetingControlBar from "@/components/meeting/MeetingControlBar";
 import { useScreenShare } from "@/hooks/useScreenShare";
 import { useRecording } from "@/hooks/useRecording";
 import { useTranscription } from "@/hooks/useTranscription";
-import { useEndMeeting, useGetMeeting, useStartMeeting, useUploadRecording } from "@/hooks/useMeetings";
+import { useEndMeeting, useGetMeeting, useStartMeeting } from "@/hooks/useMeetings";
 import { useToast } from "@/hooks/useToast";
 import { ToastStack } from "@/components/ui/toast";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 
 interface PeerData {
   peer: Peer.Instance;
@@ -25,16 +28,6 @@ interface PeerData {
   micOn: boolean;
   camOn: boolean;
 }
-
-type Tile = {
-  key: string;
-  kind: "camera" | "screen";
-  userName: string;
-  isMe: boolean;
-  stream?: MediaStream | null;
-  micOn?: boolean;
-  camOn?: boolean;
-};
 
 export default function VideoRoomPage() {
   const { id } = useParams<{ id: string }>();
@@ -52,9 +45,15 @@ export default function VideoRoomPage() {
   const { data: meeting } = useGetMeeting(id!);
   const { mutate: endMeeting } = useEndMeeting();
   const { mutate: startMeeting } = useStartMeeting(id!);
-  const { mutate: uploadRecording } = useUploadRecording(id!);
   const isHost = meeting?.host?._id === user?.id;
   const { toasts, showToast } = useToast();
+
+  useEffect(() => {
+    document.title = meeting?.title ? `${meeting.title} — IntellMeet` : "IntellMeet";
+    return () => {
+      document.title = "IntellMeet";
+    };
+  }, [meeting?.title]);
 
   // guards against StrictMode's double-invoke — both would otherwise see status "scheduled"
   // and both fire startMeeting, racing two saves on the same document
@@ -96,7 +95,7 @@ export default function VideoRoomPage() {
     isTranscribingRef.current = isTranscribing;
   }, [isTranscribing]);
 
-  const { isRecording, recordingTime, toggleRecording } = useRecording(myStreamRef, uploadRecording, showToast);
+  const { isRecording, recordingTime, toggleRecording } = useRecording(id!, showToast);
 
   const isRecordingRef = useRef(false);
   useEffect(() => {
@@ -464,14 +463,7 @@ export default function VideoRoomPage() {
       <ToastStack toasts={toasts} />
 
       {isHost && meeting?.meetingCode && (
-        <button
-          onClick={copyMeetingCode}
-          title="Copy meeting code"
-          className="absolute top-4 left-4 z-40 flex items-center gap-2 bg-slate-800/80 hover:bg-slate-700 text-white text-xs px-3 py-1.5 rounded-full border border-slate-700 transition-colors"
-        >
-          <Copy className="w-3.5 h-3.5" />
-          <span className="font-mono tracking-widest">{meeting.meetingCode}</span>
-        </button>
+        <MeetingCodeChip meetingCode={meeting.meetingCode} onCopy={copyMeetingCode} />
       )}
 
       {(isTranscribing || transcriptionActiveAnywhere) && (
@@ -484,52 +476,14 @@ export default function VideoRoomPage() {
         </div>
       )}
 
-      <Dialog open={showStartRecordingConfirm} onOpenChange={setShowStartRecordingConfirm}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Start recording this meeting?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-slate-600 mb-6">
-            You'll be asked to select this browser tab to share. Recording captures exactly what's on this tab.
-          </p>
-          <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setShowStartRecordingConfirm(false)}>
-              Cancel
-            </Button>
-            <Button
-              className="bg-red-600 hover:bg-red-700 text-white"
-              onClick={() => {
-                setShowStartRecordingConfirm(false);
-                toggleRecording();
-              }}
-            >
-              Start Recording
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showStopRecordingConfirm} onOpenChange={setShowStopRecordingConfirm}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Stop and save this recording?</DialogTitle>
-          </DialogHeader>
-          <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setShowStopRecordingConfirm(false)}>
-              Cancel
-            </Button>
-            <Button
-              className="bg-red-600 hover:bg-red-700 text-white"
-              onClick={() => {
-                setShowStopRecordingConfirm(false);
-                toggleRecording();
-              }}
-            >
-              Stop Recording
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <RecordingConfirmDialogs
+        showStartConfirm={showStartRecordingConfirm}
+        onShowStartConfirmChange={setShowStartRecordingConfirm}
+        showStopConfirm={showStopRecordingConfirm}
+        onShowStopConfirmChange={setShowStopRecordingConfirm}
+        onConfirmStart={toggleRecording}
+        onConfirmStop={toggleRecording}
+      />
 
       <div className="flex-1 flex overflow-hidden min-h-0">
         {screenTile ? (
@@ -615,160 +569,31 @@ export default function VideoRoomPage() {
         </div>
       </div>
 
-      {showCaptions && transcript && (
-        <div className="bg-black/70 text-white text-sm px-6 py-2 max-h-24 overflow-y-auto">
-          {transcript}
-        </div>
-      )}
+      {showCaptions && transcript && <LiveCaptionsBar transcript={transcript} />}
 
-      <div className="bg-slate-800 border-t border-slate-700 px-6 py-4 flex items-center justify-center gap-4">
-        <ControlBtn onClick={toggleMic} active={micOn} icon={micOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />} />
-        <ControlBtn onClick={toggleCam} active={camOn} icon={camOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />} />
-        <button
-          onClick={() => setShowCaptions((s) => !s)}
-          className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${showCaptions ? "bg-blue-500 hover:bg-blue-600 text-white" : "bg-slate-700 hover:bg-slate-600 text-white"}`}
-          title={showCaptions ? "Hide live captions" : "Show live captions"}
-        >
-          <Captions className="w-5 h-5" />
-        </button>
-        <button
-          onClick={toggleScreenShare}
-          className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${isSharing ? "bg-blue-500 hover:bg-blue-600 text-white" : "bg-slate-700 hover:bg-slate-600 text-white"}`}
-          title={isSharing ? "Stop sharing" : "Share screen"}
-        >
-          <Monitor className="w-5 h-5" />
-        </button>
-        {isHost && (
-          <button
-            onClick={() => (isRecording ? setShowStopRecordingConfirm(true) : setShowStartRecordingConfirm(true))}
-            className={`flex items-center gap-2 px-4 h-12 rounded-full transition-colors ${isRecording ? "bg-red-500 hover:bg-red-600 text-white" : "bg-slate-700 hover:bg-slate-600 text-white"}`}
-            title={isRecording ? "Stop recording" : "Start recording"}
-          >
-            <Circle className={`w-3 h-3 ${isRecording ? "fill-white animate-pulse" : "fill-slate-400"}`} />
-            <span className="text-sm font-mono">{isRecording ? recordingTime : "REC"}</span>
-          </button>
-        )}
-        {(isRecording || recordingActiveAnywhere) && (
-          <div className="flex items-center gap-1.5 bg-red-600/90 text-white text-xs px-3 h-8 rounded-full">
-            <Circle className="w-2.5 h-2.5 fill-white animate-pulse" />
-            <span>Recording</span>
-          </div>
-        )}
-        <ControlBtn
-          onClick={toggleParticipants}
-          active={openPanel !== "participants"}
-          icon={<Users className="w-5 h-5" />}
-          badge={allPeople.length}
-        />
-        <ControlBtn onClick={toggleChat} active={openPanel !== "chat"} icon={<MessageSquare className="w-5 h-5" />} />
-        <ControlBtn
-          onClick={toggleTasks}
-          active={openPanel !== "tasks"}
-          icon={<ListTodo className="w-5 h-5" />}
-        />
-        <button
-          onClick={toggleMeetingFullscreen}
-          className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${meetingIsFullscreen ? "bg-blue-500 hover:bg-blue-600 text-white" : "bg-slate-700 hover:bg-slate-600 text-white"}`}
-          title={meetingIsFullscreen ? "Exit full screen" : "Full screen meeting"}
-        >
-          {meetingIsFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
-        </button>
-        <button
-          onClick={handleLeave}
-          title={isHost ? "End meeting for all" : "Leave meeting"}
-          className="w-12 h-12 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center"
-        >
-          <PhoneOff className="w-5 h-5" />
-        </button>
-      </div>
+      <MeetingControlBar
+        micOn={micOn}
+        onToggleMic={toggleMic}
+        camOn={camOn}
+        onToggleCam={toggleCam}
+        showCaptions={showCaptions}
+        onToggleCaptions={() => setShowCaptions((s) => !s)}
+        isSharing={isSharing}
+        onToggleScreenShare={toggleScreenShare}
+        isHost={isHost}
+        isRecording={isRecording}
+        recordingTime={recordingTime}
+        recordingActiveAnywhere={recordingActiveAnywhere}
+        onRecordClick={() => (isRecording ? setShowStopRecordingConfirm(true) : setShowStartRecordingConfirm(true))}
+        openPanel={openPanel}
+        onToggleParticipants={toggleParticipants}
+        participantCount={allPeople.length}
+        onToggleChat={toggleChat}
+        onToggleTasks={toggleTasks}
+        meetingIsFullscreen={meetingIsFullscreen}
+        onToggleMeetingFullscreen={toggleMeetingFullscreen}
+        onLeave={handleLeave}
+      />
     </div>
-  );
-}
-
-function TileCard({
-  tile,
-  myVideoRef,
-  className,
-}: {
-  tile: Tile;
-  myVideoRef: React.RefObject<HTMLVideoElement | null>;
-  className?: string;
-}) {
-  return (
-    <div className={`relative bg-slate-800 rounded-xl overflow-hidden ${className || ""}`}>
-      {tile.kind === "screen" ? (
-        tile.isMe ? <ScreenPreview stream={tile.stream!} /> : <RemoteVideo stream={tile.stream} />
-      ) : tile.isMe ? (
-        <video ref={myVideoRef} autoPlay muted playsInline className="w-full h-full object-cover scale-x-[-1]" />
-      ) : (
-        <RemoteVideo stream={tile.stream} />
-      )}
-
-      {tile.kind === "camera" && !tile.camOn && (
-        <div className="absolute inset-0 flex items-center justify-center bg-slate-800">
-          <div className="w-14 h-14 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xl font-semibold">
-            {tile.userName?.charAt(0).toUpperCase() || "?"}
-          </div>
-        </div>
-      )}
-
-      {tile.kind === "screen" && (
-        <div className="absolute top-2 left-2 bg-blue-600 text-white text-[11px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
-          <Monitor className="w-3 h-3" /> Presenting
-        </div>
-      )}
-
-      <div className="absolute bottom-2 left-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded-full">
-        {tile.userName} {tile.isMe ? "(You)" : ""} {tile.kind === "screen" ? "— screen" : ""}
-      </div>
-
-      {tile.kind === "camera" && !tile.micOn && (
-        <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-red-500 flex items-center justify-center">
-          <MicOff className="w-3.5 h-3.5 text-white" />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function RemoteVideo({ stream }: { stream: MediaStream | null | undefined }) {
-  const ref = useRef<HTMLVideoElement>(null);
-  useEffect(() => {
-    if (ref.current && stream) ref.current.srcObject = stream;
-  }, [stream]);
-  return <video ref={ref} autoPlay playsInline className="w-full h-full object-cover" />;
-}
-
-function ScreenPreview({ stream }: { stream: MediaStream }) {
-  const ref = useRef<HTMLVideoElement>(null);
-  useEffect(() => {
-    if (ref.current) ref.current.srcObject = stream;
-  }, [stream]);
-  return <video ref={ref} autoPlay muted playsInline className="w-full h-full object-contain" />;
-}
-
-function ControlBtn({
-  onClick,
-  active,
-  icon,
-  badge,
-}: {
-  onClick: () => void;
-  active: boolean;
-  icon: React.ReactNode;
-  badge?: number;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`relative w-12 h-12 rounded-full flex items-center justify-center transition-colors ${active ? "bg-slate-700 hover:bg-slate-600 text-white" : "bg-red-500 hover:bg-red-600 text-white"}`}
-    >
-      {icon}
-      {!!badge && (
-        <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-blue-500 text-white text-xs font-semibold flex items-center justify-center">
-          {badge}
-        </span>
-      )}
-    </button>
   );
 }

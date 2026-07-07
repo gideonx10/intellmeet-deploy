@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { isAxiosError } from "axios";
-import { ArrowLeft, Plus, Users2, UsersRound, KeyRound, Mail, ChevronDown, Check } from "lucide-react";
+import { ArrowLeft, Plus, UsersRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import TeamManagerDialog from "@/components/workspace/TeamManagerDialog";
+import TeamSwitcher from "@/components/workspace/TeamSwitcher";
+import PendingInvitesBanner from "@/components/workspace/PendingInvitesBanner";
+import KanbanColumn from "@/components/workspace/KanbanColumn";
 import { useCreateTask, useTeamTasks, useUpdateTaskStatus } from "@/hooks/useTasks";
 import { useAcceptInvite, useMyPendingInvites, useMyTeams, useRejectInvite } from "@/hooks/useTeams";
 import type { Task } from "@/types/task";
@@ -96,94 +96,37 @@ export default function WorkspacePage() {
         </Button>
         <span className="font-semibold text-slate-800">Workspace</span>
 
-        <div className="flex items-center gap-2 ml-auto">
-          {teams && teams.length > 0 && (
-            <>
-              {teams.length > 1 ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button className="group flex items-center gap-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg pl-3 pr-2.5 py-2 hover:border-slate-300 hover:bg-slate-50 transition-colors data-[state=open]:border-blue-300 data-[state=open]:ring-2 data-[state=open]:ring-blue-100">
-                      <span>{selectedTeam?.name}</span>
-                      <ChevronDown className="w-4 h-4 text-slate-400 transition-transform group-data-[state=open]:rotate-180" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="min-w-50">
-                    {teams.map((t) => (
-                      <DropdownMenuItem
-                        key={t._id}
-                        onClick={() => setSelectedTeamId(t._id)}
-                        className={t._id === selectedTeamId ? "bg-blue-50 text-blue-700 font-medium" : ""}
-                      >
-                        <span className="flex-1 truncate">{t.name}</span>
-                        {t._id === selectedTeamId && <Check className="w-4 h-4 text-blue-600 shrink-0" />}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : (
-                <span className="text-sm text-slate-600 font-medium">{selectedTeam?.name}</span>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setManagerView("manage");
-                  setManagerOpen(true);
-                }}
-              >
-                <Users2 className="w-4 h-4 mr-1" /> Manage team
-              </Button>
-            </>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setManagerView("entry");
-              setManagerMode("join");
-              setManagerOpen(true);
-            }}
-          >
-            <KeyRound className="w-4 h-4 mr-1" /> Join a team
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setManagerView("entry");
-              setManagerMode("create");
-              setManagerOpen(true);
-            }}
-          >
-            <Plus className="w-4 h-4 mr-1" /> Create a team
-          </Button>
-        </div>
+        <TeamSwitcher
+          teams={teams}
+          selectedTeam={selectedTeam}
+          selectedTeamId={selectedTeamId}
+          onSelectTeam={setSelectedTeamId}
+          onManageTeam={() => {
+            setManagerView("manage");
+            setManagerOpen(true);
+          }}
+          onJoinTeam={() => {
+            setManagerView("entry");
+            setManagerMode("join");
+            setManagerOpen(true);
+          }}
+          onCreateTeam={() => {
+            setManagerView("entry");
+            setManagerMode("create");
+            setManagerOpen(true);
+          }}
+        />
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8">
         {pendingInvites && pendingInvites.length > 0 && (
-          <Card className="border border-blue-200 bg-blue-50/50 shadow-sm mb-6">
-            <CardContent className="py-4 space-y-2">
-              <p className="text-xs font-medium text-blue-700 flex items-center gap-1.5">
-                <Mail className="w-3.5 h-3.5" /> Pending team invites
-              </p>
-              {pendingInvites.map((inv) => (
-                <div key={inv.teamId} className="flex items-center justify-between gap-3 bg-white rounded-lg px-3 py-2">
-                  <p className="text-sm text-slate-800">
-                    You've been invited to join <span className="font-medium">{inv.teamName}</span>
-                  </p>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <Button size="sm" disabled={acceptingInvite || rejectingInvite} onClick={() => acceptInvite(inv.teamId)}>
-                      Accept
-                    </Button>
-                    <Button size="sm" variant="ghost" disabled={acceptingInvite || rejectingInvite} onClick={() => rejectInvite(inv.teamId)}>
-                      Reject
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+          <PendingInvitesBanner
+            invites={pendingInvites}
+            accepting={acceptingInvite}
+            rejecting={rejectingInvite}
+            onAccept={acceptInvite}
+            onReject={rejectInvite}
+          />
         )}
 
         {loadingTeams ? (
@@ -221,100 +164,28 @@ export default function WorkspacePage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {COLUMNS.map((col) => (
-                <div
+                <KanbanColumn
                   key={col.key}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() => handleDrop(col.key)}
-                  className="bg-slate-100 rounded-xl p-3 min-h-[420px]"
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-semibold text-slate-700">{col.label}</h3>
-                    {col.key === "todo" && (
-                      <Button size="icon-sm" variant="ghost" onClick={() => setShowForm((p) => !p)}>
-                        <Plus className="w-4 h-4" />
-                      </Button>
-                    )}
-                  </div>
-
-                  {col.key === "todo" && showForm && (
-                    <div className="bg-white rounded-lg p-3 mb-3 space-y-2 shadow-sm">
-                      {createError && (
-                        <p className="text-xs text-red-500">
-                          {isAxiosError(createError) ? createError.response?.data?.message || "Failed to create task" : "Failed to create task"}
-                        </p>
-                      )}
-                      <Input
-                        placeholder="Task title"
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                        className="text-sm"
-                      />
-                      <select
-                        value={assignee}
-                        onChange={(e) => setAssignee(e.target.value)}
-                        className="w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">Assign to...</option>
-                        {selectedTeam?.members.map((m) => (
-                          <option key={m.user._id} value={m.user._id}>
-                            {m.user.name}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        type="date"
-                        value={dueDate}
-                        onChange={(e) => setDueDate(e.target.value)}
-                        className="w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      <Button
-                        size="sm"
-                        className="w-full"
-                        disabled={!title.trim() || !assignee || creating}
-                        onClick={handleCreate}
-                      >
-                        {creating ? "Adding..." : "Add task"}
-                      </Button>
-                    </div>
-                  )}
-
-                  {loadingTasks ? (
-                    <div className="space-y-2">
-                      <Skeleton className="h-20 w-full" />
-                      <Skeleton className="h-20 w-full" />
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {tasks
-                        ?.filter((t) => t.status === col.key)
-                        .map((task) => (
-                          <div
-                            key={task._id}
-                            draggable
-                            onDragStart={() => setDraggedId(task._id)}
-                            className="bg-white rounded-lg p-3 shadow-sm cursor-grab active:cursor-grabbing"
-                          >
-                            <p className="text-sm font-medium text-slate-800">{task.title}</p>
-                            <div className="flex items-center justify-between mt-2">
-                              <div className="flex items-center gap-1.5 min-w-0">
-                                <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-semibold flex items-center justify-center shrink-0">
-                                  {task.assignee?.name?.[0]?.toUpperCase()}
-                                </div>
-                                {task.meeting && (
-                                  <span className="text-xs text-slate-400 truncate">{task.meeting.title}</span>
-                                )}
-                              </div>
-                              {task.dueDate && (
-                                <span className="text-xs text-slate-400 shrink-0">
-                                  {new Date(task.dueDate).toLocaleDateString()}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  )}
-                </div>
+                  columnKey={col.key}
+                  label={col.label}
+                  tasks={tasks}
+                  loadingTasks={loadingTasks}
+                  isNewTaskColumn={col.key === "todo"}
+                  showForm={showForm}
+                  onToggleForm={() => setShowForm((p) => !p)}
+                  members={selectedTeam?.members}
+                  title={title}
+                  onTitleChange={setTitle}
+                  assignee={assignee}
+                  onAssigneeChange={setAssignee}
+                  dueDate={dueDate}
+                  onDueDateChange={setDueDate}
+                  creating={creating}
+                  createError={createError}
+                  onSubmitNewTask={handleCreate}
+                  onDragStartTask={setDraggedId}
+                  onDrop={handleDrop}
+                />
               ))}
             </div>
           </>

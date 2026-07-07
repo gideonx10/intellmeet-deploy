@@ -2,29 +2,20 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
-import {
-  Loader2,
-  CheckCircle2,
-  Circle,
-  ArrowLeft,
-  Sparkles,
-  ChevronDown,
-  ChevronUp,
-  Printer,
-  Clock,
-  Video,
-  VideoOff,
-  Handshake,
-} from "lucide-react";
+import { Loader2, ArrowLeft, Sparkles, Printer, Clock, Handshake } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import api from "@/lib/api";
 import { useGetMeeting, useToggleActionItem } from "@/hooks/useMeetings";
 import { useCreateTask, useMeetingTasks } from "@/hooks/useTasks";
 import { useMyTeams } from "@/hooks/useTeams";
 import { useSocket } from "@/socket/useSocket";
 import { useAuthStore } from "@/store/authStore";
-import { cn } from "@/lib/utils";
+import SummaryCard from "@/components/meeting/SummaryCard";
+import ActionItemsList from "@/components/meeting/ActionItemsList";
+import TranscriptSection from "@/components/meeting/TranscriptSection";
+import RecordingStatusCard from "@/components/meeting/RecordingStatusCard";
+import MeetingTasksList from "@/components/meeting/MeetingTasksList";
 import type { ActionItem, Meeting } from "@/types/meeting";
 
 function formatDuration(start?: string, end?: string) {
@@ -175,6 +166,11 @@ export default function PostMeetingSummaryPage() {
     );
   };
 
+  const handleFormTeamChange = (teamId: string) => {
+    setFormTeamId(teamId);
+    setFormAssignee("");
+  };
+
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="no-print bg-white border-b border-slate-200 px-6 py-4">
@@ -250,216 +246,42 @@ export default function PostMeetingSummaryPage() {
 
         {isSuccess && !noAI && meeting && (
           <>
-            <Card className="border border-slate-200 shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Summary</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-slate-700 leading-relaxed">{meeting.summary}</p>
-              </CardContent>
-            </Card>
+            <SummaryCard summary={meeting.summary || ""} />
 
-            <Card className="border border-slate-200 shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Action Items</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-1">
-                {createTaskError && (
-                  <p className="text-xs text-red-500 mb-2">
-                    {isAxiosError(createTaskError)
-                      ? createTaskError.response?.data?.message || "Failed to create task"
-                      : "Failed to create task"}
-                  </p>
-                )}
-                {meeting.actionItems.length === 0 ? (
-                  <p className="text-sm text-slate-400">No action items identified.</p>
-                ) : (
-                  meeting.actionItems.map((item) => (
-                    <div key={item._id} className="rounded-lg hover:bg-slate-50">
-                      <div className="w-full flex items-start gap-3 px-3 py-2">
-                        <button
-                          onClick={() => item._id && toggleActionItem(item._id)}
-                          className="mt-0.5 shrink-0"
-                        >
-                          {item.done ? (
-                            <CheckCircle2 className="w-5 h-5 text-green-500" />
-                          ) : (
-                            <Circle className="w-5 h-5 text-slate-300" />
-                          )}
-                        </button>
+            <ActionItemsList
+              actionItems={meeting.actionItems}
+              createTaskError={createTaskError}
+              noTeams={noTeams}
+              teams={teams}
+              openItemId={openItemId}
+              formTeamId={formTeamId}
+              formAssignee={formAssignee}
+              formDueDate={formDueDate}
+              formTeam={formTeam}
+              creatingTask={creatingTask}
+              onToggleDone={toggleActionItem}
+              onOpenConvertForm={openConvertForm}
+              onCloseForm={() => setOpenItemId(null)}
+              onFormTeamChange={handleFormTeamChange}
+              onFormAssigneeChange={setFormAssignee}
+              onFormDueDateChange={setFormDueDate}
+              onConvert={handleConvert}
+            />
 
-                        <div className="flex-1 min-w-0">
-                          <p className={cn("text-sm text-slate-800", item.done && "line-through text-slate-400")}>
-                            {item.text}
-                          </p>
-                          <span className="inline-block mt-1 text-xs bg-slate-100 text-slate-600 rounded-full px-2 py-0.5">
-                            {item.taskId?.assignee.name ?? item.assignee}
-                          </span>
-                          {item.taskId && (
-                            <span className="inline-block mt-1 ml-1 text-xs bg-blue-50 text-blue-600 rounded-full px-2 py-0.5 capitalize">
-                              {item.taskId.status.replace("-", " ")}
-                            </span>
-                          )}
-                        </div>
-
-                        {noTeams ? (
-                          <span className="no-print text-xs text-slate-400 shrink-0 mt-1">Join a team to assign tasks</span>
-                        ) : item.taskId ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="no-print shrink-0 text-blue-600 hover:text-blue-700"
-                            onClick={() => openConvertForm(item)}
-                          >
-                            Reassign
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="no-print shrink-0"
-                            onClick={() => openConvertForm(item)}
-                          >
-                            Convert to Task
-                          </Button>
-                        )}
-                      </div>
-
-                      {openItemId === item._id && (
-                        <div className="no-print px-3 pb-3 pl-11 space-y-2">
-                          {teams && teams.length > 1 && !item.taskId && (
-                            <select
-                              value={formTeamId}
-                              onChange={(e) => {
-                                setFormTeamId(e.target.value);
-                                setFormAssignee("");
-                              }}
-                              className="w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                              {teams.map((t) => (
-                                <option key={t._id} value={t._id}>
-                                  {t.name}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-                          <select
-                            value={formAssignee}
-                            onChange={(e) => setFormAssignee(e.target.value)}
-                            className="w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-blue-500"
-                          >
-                            <option value="">Assign to...</option>
-                            {formTeam?.members.map((m) => (
-                              <option key={m.user._id} value={m.user._id}>
-                                {m.user.name}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            type="date"
-                            value={formDueDate}
-                            onChange={(e) => setFormDueDate(e.target.value)}
-                            className="w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              disabled={!formAssignee || creatingTask}
-                              onClick={() => handleConvert(item)}
-                            >
-                              {creatingTask ? "Saving..." : item.taskId ? "Save" : "Create Task"}
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => setOpenItemId(null)}>
-                              Cancel
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="border border-slate-200 shadow-sm">
-              <CardHeader className="pb-3">
-                <button
-                  onClick={() => setShowTranscript((p) => !p)}
-                  className="w-full flex items-center justify-between text-left"
-                >
-                  <CardTitle className="text-base">Transcript</CardTitle>
-                  {showTranscript ? (
-                    <ChevronUp className="w-4 h-4 text-slate-400" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 text-slate-400" />
-                  )}
-                </button>
-              </CardHeader>
-              {showTranscript && (
-                <CardContent>
-                  <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">
-                    {meeting.transcript || "No transcript recorded"}
-                  </p>
-                </CardContent>
-              )}
-            </Card>
+            <TranscriptSection
+              transcript={meeting.transcript}
+              showTranscript={showTranscript}
+              onToggle={() => setShowTranscript((p) => !p)}
+            />
           </>
         )}
 
         {isParticipant && meeting && meeting.recordingStatus && meeting.recordingStatus !== "none" && (
-          <Card className="border border-slate-200 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Recording</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {meeting.recordingStatus === "processing" && (
-                <div className="flex items-center gap-3 text-sm text-slate-500">
-                  <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-                  The recording will be available shortly.
-                </div>
-              )}
-              {meeting.recordingStatus === "failed" && (
-                <div className="flex items-center gap-3 text-sm text-slate-500">
-                  <VideoOff className="w-4 h-4 shrink-0" />
-                  This meeting's recording couldn't be saved.
-                </div>
-              )}
-              {meeting.recordingStatus === "ready" && meeting.recordingUrl && (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-sm text-slate-600">
-                    <Video className="w-4 h-4 shrink-0" />
-                    Watch Recording
-                  </div>
-                  <video controls src={meeting.recordingUrl} className="w-full rounded-lg border border-slate-200" />
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <RecordingStatusCard recordingStatus={meeting.recordingStatus} recordingUrl={meeting.recordingUrl} />
         )}
 
         {/* independent of the AI summary pipeline, so shows regardless of summarization status */}
-        {meetingTasks && meetingTasks.length > 0 && (
-          <Card className="border border-slate-200 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Tasks from this meeting</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-1">
-              {meetingTasks.map((task) => (
-                <div key={task._id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg hover:bg-slate-50">
-                  <p className="text-sm text-slate-800">{task.title}</p>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="text-xs bg-slate-100 text-slate-600 rounded-full px-2 py-0.5">
-                      {task.assignee.name}
-                    </span>
-                    <span className="text-xs bg-blue-50 text-blue-600 rounded-full px-2 py-0.5 capitalize">
-                      {task.status.replace("-", " ")}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        )}
+        {meetingTasks && meetingTasks.length > 0 && <MeetingTasksList tasks={meetingTasks} />}
 
         <Button variant="outline" className="no-print w-full" onClick={() => navigate("/dashboard")}>
           <ArrowLeft className="w-4 h-4 mr-2" />

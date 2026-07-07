@@ -48,11 +48,11 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/teams', teamRoutes);
 
-Sentry.setupExpressErrorHandler(app);
-
 app.get('/', (req, res) => {
   res.json({ message: 'IntellMeet API running' });
 });
+
+Sentry.setupExpressErrorHandler(app);
 
 // Track who is in which room: roomId -> Set of socketIds
 const rooms = new Map();

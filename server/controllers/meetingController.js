@@ -1,9 +1,8 @@
-import { Readable } from 'stream';
-import { getCache, setCache, deleteCache } from "../utils/cache.js";
+import { getCache, setCache } from "../utils/cache.js";
+import { meetingCacheKey, invalidateMeetingCache } from "../utils/meetingCache.js";
 import Meeting from '../models/Meeting.js';
-import Notification from '../models/Notification.js';
-import cloudinary from '../config/cloudinary.js';
 import { getIO } from '../socket/io.js';
+import { uploadRecordingBuffer, broadcastRecordingStatus, notifyParticipantsRecordingReady } from '../services/recordingService.js';
 
 // POST /api/meetings — create meeting
 export const createMeeting = async (req, res) => {
@@ -51,7 +50,7 @@ export const getMyMeetings = async (req, res) => {
 // GET /api/meetings/:id — get single meeting
 export const getMeeting = async (req, res) => {
   try {
-    const cacheKey = `meeting:${req.params.id}`;
+    const cacheKey = meetingCacheKey(req.params.id);
     const cached = await getCache(cacheKey);
 
     if (cached) {
@@ -130,7 +129,7 @@ export const startMeeting = async (req, res) => {
 
     await meeting.save();
 
-    await deleteCache(`meeting:${meeting._id}`);
+    await invalidateMeetingCache(meeting._id);
 
     res.status(200).json({
       message: 'Meeting started',
@@ -161,7 +160,7 @@ export const updateAiSettings = async (req, res) => {
     meeting.aiEnabled = !!req.body.aiEnabled;
     await meeting.save();
 
-    await deleteCache(`meeting:${meeting._id}`);
+    await invalidateMeetingCache(meeting._id);
 
     res.status(200).json({
       message: 'AI settings updated',
@@ -194,7 +193,7 @@ export const endMeeting = async (req, res) => {
 
     await meeting.save();
 
-    await deleteCache(`meeting:${meeting._id}`);
+    await invalidateMeetingCache(meeting._id);
 
     // Tell everyone still in the room the meeting is over so they get redirected too
     const io = getIO();
@@ -226,58 +225,31 @@ export const uploadRecording = async (req, res) => {
     }
 
     const io = getIO();
-    const notifyStatus = (recordingStatus, recordingUrl) => {
-      if (io) {
-        io.to(`meeting-summary:${meeting._id}`).emit('recording-status-changed', {
-          meetingId: meeting._id.toString(),
-          recordingStatus,
-          recordingUrl,
-        });
-      }
-    };
 
     meeting.recordingStatus = 'processing';
     await meeting.save();
-    await deleteCache(`meeting:${meeting._id}`);
-    notifyStatus('processing');
+    await invalidateMeetingCache(meeting._id);
+    broadcastRecordingStatus(io, meeting, 'processing');
 
     let uploadResult;
     try {
-      uploadResult = await new Promise((resolve, reject) => {
-        const uploadStream = cloudinary.uploader.upload_stream(
-          { resource_type: 'video', folder: 'intellmeet/recordings' },
-          (err, result) => (err ? reject(err) : resolve(result))
-        );
-        Readable.from(req.file.buffer).pipe(uploadStream);
-      });
+      uploadResult = await uploadRecordingBuffer(req.file.buffer);
     } catch (uploadErr) {
       console.error('Recording upload to Cloudinary failed:', uploadErr);
       meeting.recordingStatus = 'failed';
       await meeting.save();
-      await deleteCache(`meeting:${meeting._id}`);
-      notifyStatus('failed');
+      await invalidateMeetingCache(meeting._id);
+      broadcastRecordingStatus(io, meeting, 'failed');
       return res.status(500).json({ message: 'Failed to upload recording' });
     }
 
     meeting.recordingUrl = uploadResult.secure_url;
     meeting.recordingStatus = 'ready';
     await meeting.save();
-    await deleteCache(`meeting:${meeting._id}`);
-    notifyStatus('ready', meeting.recordingUrl);
+    await invalidateMeetingCache(meeting._id);
+    broadcastRecordingStatus(io, meeting, 'ready', meeting.recordingUrl);
 
-    const notifications = await Notification.insertMany(
-      meeting.participants.map((p) => ({
-        recipient: p.user,
-        type: 'recording_ready',
-        message: `Recording is now available for "${meeting.title}"`,
-        meetingId: meeting._id,
-      }))
-    );
-    if (io) {
-      notifications.forEach((n) => {
-        io.emit('notification', { ...n.toObject(), toUserId: n.recipient.toString() });
-      });
-    }
+    await notifyParticipantsRecordingReady(io, meeting);
 
     res.status(200).json({
       message: 'Recording uploaded',
@@ -305,7 +277,7 @@ export const toggleActionItem = async (req, res) => {
 
     item.done = !item.done;
     await meeting.save();
-    await deleteCache(`meeting:${meeting._id}`);
+    await invalidateMeetingCache(meeting._id);
 
     res.status(200).json({ actionItems: meeting.actionItems });
   } catch (err) {
@@ -330,7 +302,7 @@ export const deleteMeeting = async (req, res) => {
       });
     }
 
-    await deleteCache(`meeting:${meeting._id}`);
+    await invalidateMeetingCache(meeting._id);
 
     await meeting.deleteOne();
 

@@ -14,6 +14,7 @@ import DashboardPage from "@/pages/dashboard/DashboardPage";
 import { SocketProvider } from "@/socket/SocketProvider";
 import LobbyPage from "@/pages/meeting/LobbyPage";
 import VideoRoomPage from "@/pages/meeting/VideoRoomPage";
+import RecordingWorkerPage from "@/pages/meeting/RecordingWorkerPage";
 import PostMeetingSummaryPage from "@/pages/meeting/PostMeetingSummaryPage";
 import WorkspacePage from "@/pages/dashboard/WorkspacePage";
 import ProfilePage from "@/pages/profile/ProfilePage";
@@ -44,6 +45,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/lobby/:id" element={<LobbyPage />} />
               <Route path="/meeting/:id" element={<VideoRoomPage />} />
+              <Route path="/recording-worker/:id" element={<RecordingWorkerPage />} />
               <Route path="/meeting/:id/summary" element={<PostMeetingSummaryPage />} />
               <Route path="/workspace" element={<WorkspacePage />} />
               <Route path="/profile" element={<ProfilePage />} />
